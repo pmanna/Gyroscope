@@ -1,0 +1,3 @@
+Sample code to use an iPhone/iPod/iPad gyroscope asynchronously via Core Motion.
+
+Broadly based on code available at http://goo.gl/BsQy3 , added more accuracy and async operation.
