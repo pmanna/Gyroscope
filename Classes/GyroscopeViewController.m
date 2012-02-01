@@ -2,7 +2,7 @@
 
 @implementation GyroscopeViewController
 
-@synthesize image, toleranceField;
+@synthesize image, toleranceField, calibrationField, gyroToggle, motionToggle;
 
 - (void)updateImage: (NSNumber *)rotNum
 {
@@ -16,10 +16,14 @@
     return NO;
 }
 
--(IBAction)toggleUpdates:(id)sender {
+-(IBAction)toggleGyroUpdates:(id)sender {
     if (motionManager.isGyroAvailable) {
         if ([sender isOn]) {
-            lastTimeStamp   = 0.0;
+            if (motionToggle.on) {
+                motionToggle.on = NO;
+                [self toggleMotionUpdates: motionToggle];
+            }
+            lastTimeStamp   = -1.0;
             [motionManager startGyroUpdatesToQueue: gyroQueue
                                        withHandler: ^(CMGyroData *gyroData, NSError *error) {
                                     double   rate    = gyroData.rotationRate.z;
@@ -46,22 +50,67 @@
     }
 }
 
+-(IBAction)toggleMotionUpdates:(id)sender
+{
+    if (motionManager.isDeviceMotionAvailable) {
+        if ([sender isOn]) {
+            if (gyroToggle.on) {
+                gyroToggle.on = NO;
+                [self toggleGyroUpdates: gyroToggle];
+            }
+            lastTimeStamp   = -1.0;
+            [motionManager startDeviceMotionUpdatesToQueue: gyroQueue
+                                               withHandler: ^(CMDeviceMotion *motion, NSError *error) {
+                                            double   yaw    = motion.attitude.yaw;
+                                            
+                                            if (lastTimeStamp < 0.0)
+                                                lastTimeStamp   = motion.timestamp;
+                                            // Wait a bit to let calibration work
+                                            if (motion.timestamp - lastTimeStamp < calibrationTime)
+                                                rotation = yaw;
+                                            else
+                                                [self performSelectorOnMainThread: @selector(updateImage:)
+                                                                       withObject: [NSNumber numberWithDouble: yaw - rotation]
+                                                                    waitUntilDone: NO];
+                                       }];
+        } else {
+            [motionManager stopDeviceMotionUpdates];
+            rotation    = 0.0;
+            [self performSelector: @selector(updateImage:)
+                       withObject:[NSNumber numberWithDouble: rotation]
+                       afterDelay: 0.5];
+        }
+    }
+}
+
+
 -(IBAction)changeTolerance:(id)sender
 {
     tolerance   = fabs([toleranceField.text doubleValue]);
 }
 
+-(IBAction)changeCalibration:(id)sender
+{
+    calibrationTime = fabs([calibrationField.text doubleValue]);
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    tolerance           = 0.01;
-    toleranceField.text = [NSString stringWithFormat: @"%.4f", tolerance];
+    tolerance               = 0.01;
+    calibrationTime         = 1.0;
+    toleranceField.text     = [NSString stringWithFormat: @"%.4f", tolerance];
+    calibrationField.text   = [NSString stringWithFormat: @"%.1f", calibrationTime];
     
-	motionManager       = [[CMMotionManager alloc] init];
-    gyroQueue           = [[NSOperationQueue alloc] init];
+	motionManager           = [[CMMotionManager alloc] init];
+    gyroQueue               = [[NSOperationQueue alloc] init];
     
     if (motionManager.isGyroAvailable) {
-        motionManager.gyroUpdateInterval    = 1 / 60.0;
+        motionManager.gyroUpdateInterval            = 1 / 60.0;
+    }
+    
+    if (motionManager.isDeviceMotionAvailable) {
+        motionManager.deviceMotionUpdateInterval    = 1 / 60.0;
     }
 }
 
@@ -117,6 +166,9 @@
 - (void)dealloc {
 	self.image          = nil;
     self.toleranceField = nil;
+    self.calibrationField   = nil;
+    self.gyroToggle     = nil;
+    self.motionToggle   = nil;
     
     [super dealloc];
 }
